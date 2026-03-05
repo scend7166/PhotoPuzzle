@@ -1,0 +1,41 @@
+package com.photopuzzle.app.data.db
+
+import androidx.room.*
+import com.photopuzzle.app.data.models.PuzzleResult
+import kotlinx.coroutines.flow.Flow
+
+@Dao
+interface PuzzleResultDao {
+
+    @Insert
+    suspend fun insert(result: PuzzleResult): Long
+
+    @Query("SELECT * FROM puzzle_results ORDER BY completedAt DESC")
+    fun getAllResults(): Flow<List<PuzzleResult>>
+
+    @Query("SELECT COUNT(*) FROM puzzle_results")
+    fun getTotalSolved(): Flow<Int>
+
+    @Query("SELECT AVG(completionTimeSeconds) FROM puzzle_results")
+    fun getAverageCompletionTime(): Flow<Double?>
+
+    @Query("SELECT AVG(CAST(completionTimeSeconds AS REAL) / pieceCount) FROM puzzle_results")
+    fun getAverageTimePerPiece(): Flow<Double?>
+
+    @Query("""
+        SELECT pieceCount, COUNT(*) as timesSolved, AVG(completionTimeSeconds) as averageCompletionSeconds
+        FROM puzzle_results
+        GROUP BY pieceCount
+        ORDER BY pieceCount ASC
+    """)
+    fun getStatsBySize(): Flow<List<SizeStatsEntity>>
+
+    @Query("DELETE FROM puzzle_results")
+    suspend fun deleteAll()
+}
+
+data class SizeStatsEntity(
+    val pieceCount: Int,
+    val timesSolved: Int,
+    val averageCompletionSeconds: Double
+)
