@@ -147,40 +147,47 @@ object PuzzleEngine {
      *   cubicTo(tip_x, y+n,   tip_x, y+kh, kx+kh, y) ← sweep back to far side
      *   lineTo(x2, y)
      */
+    /**
+     * Horizontal edge from (x1,y) to (x2,y).
+     * Same 4-segment classic jigsaw shape, axes swapped.
+     */
     private fun hEdge(
         path: Path, x1: Float, y1: Float, x2: Float, y2: Float,
         conn: EdgeConnector?, pw: Float, ph: Float, perpSign: Float
     ) {
         if (conn == null) { path.lineTo(x2, y2); return }
         val dir   = if (x2 >= x1) 1f else -1f
-        val kx    = minOf(x1, x2) + pw * conn.offset  // always from left of piece
+        val kx    = minOf(x1, x2) + pw * conn.offset
         val kh    = conn.size  * pw
         val kd    = conn.depth * ph * perpSign * conn.sign
-        val n     = 0.4f * kh
-        val tipX  = kx + kd          // tip is perpendicular, but for H-edge kd is in Y...
-        // For horizontal edge: kd is in Y direction (perpendicular to edge)
-        // tip_y = y1 + kd;  all CPs share tip_y, varying in x along the edge
         val tipY  = y1 + kd
+        val neckY = y1 + kd * 0.45f
+        val neckH = kh * 0.25f
+        val adv   = kh * 0.55f
+        val hcp   = kd * 0.45f
 
-        path.lineTo(kx - dir * kh, y1)
-        path.cubicTo(kx - dir * kh, tipY,   kx - dir * n, tipY,  kx, tipY)
-        path.cubicTo(kx + dir * n,  tipY,   kx + dir * kh, tipY, kx + dir * kh, y1)
-        path.lineTo(x2, y2)
+        val dip = kd * 0.30f
+        // Corner → neck: one long cubic
+        path.cubicTo(x1,                  y1 - dip,
+                     kx - dir * neckH,    y1 - dip,
+                     kx - dir * neckH,    neckY)
+        path.cubicTo(kx - dir * hcp, neckY,
+                     kx - dir * hcp, tipY,
+                     kx,             tipY)
+        path.cubicTo(kx + dir * hcp, tipY,
+                     kx + dir * hcp, neckY,
+                     kx + dir * neckH, neckY)
+        // Neck → corner: one long cubic mirrors entry
+        path.cubicTo(kx + dir * neckH,    y1 - dip,
+                     x2,                  y1 - dip,
+                     x2,                  y1)
     }
 
     /**
      * Vertical edge from (x,y1) to (x,y2).
-     *
-     * Knob geometry — all control points sit at the tip Y (ky ± dir*kh region),
-     * varying only in X. Perfect mirror with the opposite piece.
-     *
-     *   ky  = knob centre Y (along edge)
-     *   kh  = knob half-height (along edge,    fraction of ph)
-     *   kd  = knob depth       (perpendicular,  fraction of pw, signed by perpSign*sign)
-     *   n   = 0.4*kh
-     *
-     * All three CPs per segment share the tip X (x1+kd), varying only in Y.
-     * This ensures the left-piece blank is the exact mirror of the right-piece tab.
+     * Classic 4-segment jigsaw: entry → neck → head tip → neck → exit.
+     * neckX = 50% depth, neck spans 62% of half-slot-height.
+     * All terms use `dir` so dir=+1 (top→bottom) and dir=-1 (bottom→top) are exact mirrors.
      */
     private fun vEdge(
         path: Path, x1: Float, y1: Float, x2: Float, y2: Float,
@@ -188,15 +195,31 @@ object PuzzleEngine {
     ) {
         if (conn == null) { path.lineTo(x2, y2); return }
         val dir   = if (y2 >= y1) 1f else -1f
-        val ky    = minOf(y1, y2) + ph * conn.offset  // always from top of piece
+        val ky    = minOf(y1, y2) + ph * conn.offset
         val kh    = conn.size  * ph
         val kd    = conn.depth * pw * perpSign * conn.sign
-        val n     = 0.4f * kh
         val tipX  = x1 + kd
+        val neckX = x1 + kd * 0.45f   // neck at 45% of depth
+        val neckH = kh * 0.25f         // narrow neck (25% of half-slot) — sharp constriction
+        val adv   = kh * 0.55f         // large advance — path hugs edge before jumping to neck
+        val hcp   = kd * 0.45f         // head CP — fraction of depth for circular head
 
-        path.lineTo(x1, ky - dir * kh)
-        path.cubicTo(tipX, ky - dir * kh,   tipX, ky - dir * n,   tipX, ky)
-        path.cubicTo(tipX, ky + dir * n,    tipX, ky + dir * kh,  x1,   ky + dir * kh)
-        path.lineTo(x2, y2)
+        val dip = kd * 0.30f            // inward pull past edge — creates shoulder indent
+        // Corner → neck: one long cubic so shoulder is a fluid curve from the piece corner
+        path.cubicTo(x1 - dip, y1,
+                     x1 - dip, ky - dir * neckH,
+                     neckX,    ky - dir * neckH)
+        // Neck → head tip
+        path.cubicTo(neckX, ky - dir * hcp,
+                     tipX,  ky - dir * hcp,
+                     tipX,  ky)
+        // Head tip → neck (mirror)
+        path.cubicTo(tipX,  ky + dir * hcp,
+                     neckX, ky + dir * hcp,
+                     neckX, ky + dir * neckH)
+        // Neck → corner: one long cubic mirrors entry
+        path.cubicTo(x1 - dip, ky + dir * neckH,
+                     x1 - dip, y2,
+                     x1,       y2)
     }
 }
