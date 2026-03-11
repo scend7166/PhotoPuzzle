@@ -2,7 +2,11 @@ package com.photopuzzle.app.ui.screens
 
 import android.graphics.Bitmap
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.drag
@@ -13,6 +17,14 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -36,11 +48,12 @@ import com.photopuzzle.app.game.GameViewModel
 import com.photopuzzle.app.game.TablePiece
 import com.photopuzzle.app.game.TrayPiece
 
-private val WoodDark  = Color(0xFF5D3A1A)
-private val WoodMid   = Color(0xFF7B4F2E)
-private val WoodGrain = Color(0xFF6B4226)
-private val TrayBg    = Color(0xFF1E1E2E)
-private val TrayGrid  = Color(0xFF2A2A3E)
+private val CardboardLight = Color(0xFFD4A96A)  // main board surface — warm cardboard
+private val CardboardMid   = Color(0xFFC09050)  // slightly deeper tone for loading states
+private val BezelOuter     = Color(0xFF8B6340)  // outer bezel edge (darker, gives depth)
+private val BezelInner     = Color(0xFFE8C98A)  // inner bezel highlight (lighter, raised feel)
+private val TrayBg         = Color(0xFF1E1E2E)
+private val TrayGrid       = Color(0xFF2A2A3E)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,6 +67,9 @@ fun GameScreen(
     val state by viewModel.uiState.collectAsState()
 
     var tableWidthPx  by remember { mutableFloatStateOf(0f) }
+    var showPeek        by remember { mutableStateOf(false) }
+    var showQuitConfirm  by remember { mutableStateOf(false) }
+    var showResetConfirm by remember { mutableStateOf(false) }
     var trayPiecePx   by remember { mutableFloatStateOf(0f) }
 
     // Root Y offset of the outer Box — used to convert local pointer coords → root coords
@@ -74,6 +90,51 @@ fun GameScreen(
         }
     }
 
+    // Reset confirmation dialog
+    if (showResetConfirm) {
+        AlertDialog(
+            onDismissRequest = { showResetConfirm = false },
+            title = { Text("Reset puzzle?") },
+            text  = { Text("All progress will be lost and the puzzle will be reshuffled.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showResetConfirm = false
+                    viewModel.resetGame()
+                }) { Text("Reset", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetConfirm = false }) { Text("Keep playing") }
+            }
+        )
+    }
+
+    // Quit confirmation dialog
+    if (showQuitConfirm) {
+        AlertDialog(
+            onDismissRequest = { showQuitConfirm = false },
+            title = { Text("Quit puzzle?") },
+            text  = { Text("Your progress will be lost.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showQuitConfirm = false
+                    onQuit()
+                }) { Text("Quit", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showQuitConfirm = false }) { Text("Keep playing") }
+            }
+        )
+    }
+
+    // Peek overlay — shows the completed image without revealing slot positions
+    val peekBitmap = state.sourceBitmap
+    if (showPeek && peekBitmap != null) {
+        PeekOverlay(
+            bitmap = peekBitmap,
+            onDismiss = { showPeek = false }
+        )
+    }
+
     if (state.isSolved) {
         PuzzleSolvedDialog(
             elapsedSeconds = state.elapsedSeconds,
@@ -85,11 +146,36 @@ fun GameScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(formatTime(state.elapsedSeconds), fontWeight = FontWeight.Bold, fontSize = 20.sp) },
+                // Left: timer + peek button
+                navigationIcon = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            formatTime(state.elapsedSeconds),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            modifier = Modifier.padding(start = 16.dp)
+                        )
+                        IconButton(onClick = { showPeek = true }) {
+                            Icon(Icons.Default.Image, contentDescription = "Peek at completed puzzle")
+                        }
+                    }
+                },
+                // Centre: piece count
+                title = {
+                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        Text(
+                            "$pieceCount pieces",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 14.sp
+                        )
+                    }
+                },
+                // Right: reset + close
                 actions = {
-                    Text("$pieceCount pieces", modifier = Modifier.padding(end = 8.dp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    IconButton(onClick = onQuit) {
+                    IconButton(onClick = { showResetConfirm = true }) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Reset puzzle")
+                    }
+                    IconButton(onClick = { showQuitConfirm = true }) {
                         Icon(Icons.Default.Close, contentDescription = "Quit")
                     }
                 }
@@ -132,13 +218,20 @@ fun GameScreen(
                     with(LocalDensity.current) { (tableWidthPx / aspectRatio).toDp() }
                 else 0.dp
 
+                // Bezel frame: outer dark ring → inner highlight ring → cardboard surface
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .then(
                             if (tableHeightDp > 0.dp) Modifier.height(tableHeightDp)
-                            else Modifier.weight(1f)  // fallback before aspect ratio known
+                            else Modifier.weight(1f)
                         )
+                        .background(BezelOuter, shape = RoundedCornerShape(10.dp))
+                        .padding(6.dp)
+                        .background(BezelInner, shape = RoundedCornerShape(7.dp))
+                        .padding(4.dp)
+                        .background(CardboardLight, shape = RoundedCornerShape(5.dp))
+                        .clip(RoundedCornerShape(5.dp))
                         .onGloballyPositioned { coords ->
                             tableWidthPx = coords.size.width.toFloat()
                             val rootY = coords.positionInRoot().y
@@ -148,12 +241,12 @@ fun GameScreen(
                 ) {
                     when {
                         state.isLoading -> Box(
-                            Modifier.fillMaxSize().background(WoodMid),
+                            Modifier.fillMaxSize().background(CardboardMid),
                             contentAlignment = Alignment.Center
                         ) { CircularProgressIndicator(color = Color.White) }
 
                         state.errorMessage != null -> Box(
-                            Modifier.fillMaxSize().background(WoodMid),
+                            Modifier.fillMaxSize().background(CardboardMid),
                             contentAlignment = Alignment.Center
                         ) { Text(state.errorMessage!!, color = Color.White) }
 
@@ -228,22 +321,8 @@ fun TableCanvas(
     modifier: Modifier = Modifier
 ) {
     Canvas(modifier = modifier) {
-        drawRect(color = WoodMid)
-        val lineCount = (size.height / 18f).toInt()
-        for (i in 0..lineCount) {
-            val y = i * 18f + (i % 3) * 2f
-            drawLine(WoodGrain.copy(alpha = 0.35f), Offset(0f, y), Offset(size.width, y),
-                strokeWidth = if (i % 4 == 0) 2.5f else 1f)
-        }
-        for (row in 0 until rows) {
-            for (col in 0 until cols) {
-                val x = col * pieceW; val y = row * pieceH
-                drawRect(Color.Black.copy(alpha = 0.28f),
-                    topLeft = Offset(x + 3f, y + 3f), size = Size(pieceW - 6f, pieceH - 6f))
-                drawRect(WoodDark.copy(alpha = 0.55f),
-                    topLeft = Offset(x + 2f, y + 2f), size = Size(pieceW - 4f, pieceH - 4f))
-            }
-        }
+        // Plain cardboard surface — no grid lines
+        drawRect(color = CardboardLight)
         tablePieces.forEach { piece ->
             drawIntoCanvas { canvas ->
                 // Scale shaped bitmap from bitmap-space to table-space
@@ -311,3 +390,56 @@ fun PuzzleSolvedDialog(elapsedSeconds: Long, pieceCount: Int, onDismiss: () -> U
 }
 
 fun formatTime(seconds: Long): String = "%02d:%02d".format(seconds / 60, seconds % 60)
+
+// ── Peek Overlay ──────────────────────────────────────────────────────────────
+// Shows the completed puzzle image in a modal so the player can study it
+// without revealing which slot each piece belongs to.
+
+@Composable
+fun PeekOverlay(bitmap: android.graphics.Bitmap, onDismiss: () -> Unit) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.85f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(24.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(BezelOuter, shape = RoundedCornerShape(10.dp))
+                        .padding(6.dp)
+                        .background(BezelInner, shape = RoundedCornerShape(7.dp))
+                        .padding(4.dp)
+                        .clip(RoundedCornerShape(5.dp))
+                ) {
+                    androidx.compose.foundation.Image(
+                        bitmap = bitmap.asImageBitmap(),
+                        contentDescription = "Completed puzzle image",
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                Text(
+                    "Tap anywhere to close",
+                    color = Color.White.copy(alpha = 0.6f),
+                    fontSize = 13.sp,
+                    modifier = Modifier
+                        .padding(top = 16.dp)
+                        .clickable { onDismiss() }
+                )
+            }
+            // Tap outside image to dismiss
+            Box(modifier = Modifier
+                .fillMaxSize()
+                .clickable { onDismiss() }
+            )
+        }
+    }
+}

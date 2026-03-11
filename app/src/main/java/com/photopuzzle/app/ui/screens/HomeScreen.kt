@@ -1,9 +1,18 @@
 package com.photopuzzle.app.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.FileProvider
+import java.io.File
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.core.content.ContextCompat
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -12,6 +21,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.*
@@ -36,12 +46,78 @@ fun HomeScreen(
     val context = LocalContext.current
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
     var selectedPieceCount by remember { mutableIntStateOf(25) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     val photoPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri -> if (uri != null) selectedImageUri = uri }
 
+    // Camera: create a temp file URI before launching so we have somewhere to write the photo
+    var cameraImageUri by remember { mutableStateOf<Uri?>(null) }
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success -> if (success) selectedImageUri = cameraImageUri }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            val uri = createCameraImageUri(context)
+            cameraImageUri = uri
+            cameraLauncher.launch(uri)
+        } else {
+            scope.launch { snackbarHostState.showSnackbar("Camera permission required") }
+        }
+    }
+
+    fun onTakePhoto() {
+        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+                PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            val uri = createCameraImageUri(context)
+            cameraImageUri = uri
+            cameraLauncher.launch(uri)
+        } else {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    // Permission needed to read MediaStore on Android 12 and below
+    val storagePermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+        Manifest.permission.READ_MEDIA_IMAGES
+    else
+        Manifest.permission.READ_EXTERNAL_STORAGE
+
+    // Launched when permission is granted — immediately picks a random photo
+    val randomPhotoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            pickRandomPhoto(context) { uri ->
+                if (uri != null) selectedImageUri = uri
+                else scope.launch { snackbarHostState.showSnackbar("No photos found on device") }
+            }
+        } else {
+            scope.launch { snackbarHostState.showSnackbar("Permission required to access photos") }
+        }
+    }
+
+    fun onPickRandom() {
+        val already = ContextCompat.checkSelfPermission(context, storagePermission) ==
+                PackageManager.PERMISSION_GRANTED
+        if (already) {
+            pickRandomPhoto(context) { uri ->
+                if (uri != null) selectedImageUri = uri
+                else scope.launch { snackbarHostState.showSnackbar("No photos found on device") }
+            }
+        } else {
+            randomPhotoPicker.launch(storagePermission)
+        }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Photo Puzzle", fontWeight = FontWeight.Bold) },
@@ -63,7 +139,7 @@ fun HomeScreen(
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Image picker area
+            // Image preview — display only, not clickable
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -73,10 +149,7 @@ fun HomeScreen(
                     .border(
                         BorderStroke(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
                         RoundedCornerShape(16.dp)
-                    )
-                    .clickable {
-                        photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                    },
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 if (selectedImageUri != null) {
@@ -87,27 +160,36 @@ fun HomeScreen(
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Default.Image,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("Tap to choose a photo", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+                    Icon(
+                        Icons.Default.Image,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                        modifier = Modifier.size(64.dp)
+                    )
                 }
             }
 
-            // Random photo button
-            OutlinedButton(
-                onClick = { pickRandomPhoto(context) { selectedImageUri = it } },
-                modifier = Modifier.fillMaxWidth()
+            // Photo source buttons — evenly spaced, icon only
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                Icon(Icons.Default.Shuffle, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Pick Random Photo")
+                // 1. Choose from gallery
+                OutlinedIconButton(
+                    onClick = {
+                        photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    }
+                ) {
+                    Icon(Icons.Default.Image, contentDescription = "Choose a photo")
+                }
+                // 2. Take a picture
+                OutlinedIconButton(onClick = { onTakePhoto() }) {
+                    Icon(Icons.Default.CameraAlt, contentDescription = "Take a picture")
+                }
+                // 3. Random photo
+                OutlinedIconButton(onClick = { onPickRandom() }) {
+                    Icon(Icons.Default.Shuffle, contentDescription = "Select random photo")
+                }
             }
 
             // Piece count selector
@@ -194,4 +276,10 @@ private fun pickRandomPhoto(context: android.content.Context, onResult: (Uri?) -
     } catch (e: Exception) {
         onResult(null)
     }
+}
+
+/** Creates a temp file URI via FileProvider for the camera to write into. */
+private fun createCameraImageUri(context: android.content.Context): Uri {
+    val file = File.createTempFile("camera_", ".jpg", context.cacheDir)
+    return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
 }

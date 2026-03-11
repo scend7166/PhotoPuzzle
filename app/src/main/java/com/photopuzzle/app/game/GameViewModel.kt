@@ -65,7 +65,8 @@ data class GameUiState(
     val elapsedSeconds: Long = 0L,
     val isSolved: Boolean = false,
     val isLoading: Boolean = true,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val sourceBitmap: Bitmap? = null,   // full image for the peek overlay
 )
 
 @HiltViewModel
@@ -80,6 +81,8 @@ class GameViewModel @Inject constructor(
     private var timerJob: Job? = null
     private var imageUri: String = ""
     private var pieceCount: Int = 0
+    private var storedTableWidthPx: Float = 0f
+    private var storedTrayPieceSizePx: Float = 0f
     private var initialized = false
 
     // Layout boundaries set by the UI
@@ -97,6 +100,8 @@ class GameViewModel @Inject constructor(
         initialized = true
         this.imageUri = imageUri
         this.pieceCount = pieceCount
+        this.storedTableWidthPx = tableWidthPx
+        this.storedTrayPieceSizePx = trayPieceSizePx
 
         viewModelScope.launch {
             try {
@@ -105,7 +110,8 @@ class GameViewModel @Inject constructor(
                 data class Loaded(
                     val shapes: List<PieceShape>, val cols: Int, val rows: Int,
                     val pieceW: Float, val pieceH: Float, val margin: Int,
-                    val aspectRatio: Float, val tableHeightPx: Float
+                    val aspectRatio: Float, val tableHeightPx: Float,
+                    val sourceBitmap: Bitmap,
                 )
 
                 val loaded = withContext(Dispatchers.Default) {
@@ -119,7 +125,7 @@ class GameViewModel @Inject constructor(
                     val pw = tableWidthPx / c
                     val ph = tableHeightPx / r
                     val mg = (maxOf(pw, ph) * 0.45f).toInt()
-                    Loaded(PuzzleEngine.createPieces(scaled, pieceCount), c, r, pw, ph, mg, aspectRatio, tableHeightPx)
+                    Loaded(PuzzleEngine.createPieces(scaled, pieceCount), c, r, pw, ph, mg, aspectRatio, tableHeightPx, scaled)
                 }
 
                 val thumbSize = (trayPieceSizePx * 1.4f).toInt().coerceAtLeast(40)
@@ -140,13 +146,20 @@ class GameViewModel @Inject constructor(
                     trayPieces = tray,
                     cols = loaded.cols,
                     rows = loaded.rows,
-                    isLoading = false
+                    isLoading = false,
+                    sourceBitmap = loaded.sourceBitmap,
                 )
                 startTimer()
             } catch (e: Exception) {
                 _uiState.value = GameUiState(isLoading = false, errorMessage = "Failed to load: ${e.message}")
             }
         }
+    }
+
+    /** Reset the puzzle to its initial unsolved state, reshuffling pieces. */
+    fun resetGame() {
+        initialized = false
+        initGame(imageUri, pieceCount, storedTableWidthPx, storedTrayPieceSizePx)
     }
 
     // ── Global drag handlers (called from single root pointerInput) ───────────
