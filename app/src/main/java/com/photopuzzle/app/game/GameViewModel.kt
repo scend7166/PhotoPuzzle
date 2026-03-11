@@ -66,6 +66,7 @@ data class GameUiState(
     val isSolved: Boolean = false,
     val isLoading: Boolean = true,
     val errorMessage: String? = null,
+    val isPaused: Boolean = false,
     val sourceBitmap: Bitmap? = null,   // full image for the peek overlay
 )
 
@@ -409,6 +410,18 @@ class GameViewModel @Inject constructor(
     private fun makeThumb(shape: PieceShape, state: GameUiState): Bitmap {
         val size = (state.tableWidthPx / 5f * 1.4f).toInt().coerceAtLeast(40)
         return Bitmap.createScaledBitmap(shape.shapedBitmap, size, size, true)
+    }
+
+    fun pauseGame() {
+        if (_uiState.value.isPaused || _uiState.value.isSolved) return
+        timerJob?.cancel()
+        _uiState.value = _uiState.value.copy(isPaused = true)
+    }
+
+    fun resumeGame() {
+        if (!_uiState.value.isPaused) return
+        _uiState.value = _uiState.value.copy(isPaused = false)
+        startTimer()
     }
 
     private fun startTimer() {

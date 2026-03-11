@@ -6,6 +6,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -19,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -175,6 +177,9 @@ fun GameScreen(
                     IconButton(onClick = { showResetConfirm = true }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Reset puzzle")
                     }
+                    IconButton(onClick = { viewModel.pauseGame() }) {
+                        Icon(Icons.Default.Pause, contentDescription = "Pause")
+                    }
                     IconButton(onClick = { showQuitConfirm = true }) {
                         Icon(Icons.Default.Close, contentDescription = "Quit")
                     }
@@ -211,7 +216,10 @@ fun GameScreen(
                     }
                 }
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
+            Column(modifier = Modifier
+                .fillMaxSize()
+                .then(if (state.isPaused) Modifier.blur(20.dp) else Modifier)
+            ) {
 
                 // ── Assembly Table — sized to match image aspect ratio ─────────
                 val tableHeightDp = if (tableWidthPx > 0 && aspectRatio > 0)
@@ -304,6 +312,11 @@ fun GameScreen(
                         canvas.nativeCanvas.drawBitmap(drag.bitmap, matrix, paint)
                     }
                 }
+            }
+
+            // Pause overlay — covers full content area including tray, above all game UI
+            if (state.isPaused) {
+                PauseOverlay(onResume = { viewModel.resumeGame() })
             }
         }
     }
@@ -411,6 +424,13 @@ fun PeekOverlay(bitmap: android.graphics.Bitmap, onDismiss: () -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.padding(24.dp)
             ) {
+                Text(
+                    "Completed Puzzle",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -439,6 +459,34 @@ fun PeekOverlay(bitmap: android.graphics.Bitmap, onDismiss: () -> Unit) {
             Box(modifier = Modifier
                 .fillMaxSize()
                 .clickable { onDismiss() }
+            )
+        }
+    }
+}
+
+// ── Pause Overlay ─────────────────────────────────────────────────────────────
+
+@Composable
+fun PauseOverlay(onResume: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.85f))
+            .clickable { onResume() },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                imageVector = Icons.Default.Pause,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(80.dp)
+            )
+            Spacer(modifier = Modifier.height(20.dp))
+            Text(
+                text = "Tap anywhere to resume",
+                color = Color.White.copy(alpha = 0.7f),
+                fontSize = 15.sp
             )
         }
     }
