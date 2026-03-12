@@ -68,7 +68,8 @@ fun GameScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
 
-    var tableWidthPx  by remember { mutableFloatStateOf(0f) }
+    var tableWidthPx      by remember { mutableFloatStateOf(0f) }
+    var outerTableWidthPx by remember { mutableFloatStateOf(0f) }
     var showPeek        by remember { mutableStateOf(false) }
     var showQuitConfirm  by remember { mutableStateOf(false) }
     var showResetConfirm by remember { mutableStateOf(false) }
@@ -222,8 +223,9 @@ fun GameScreen(
             ) {
 
                 // ── Assembly Table — sized to match image aspect ratio ─────────
-                val tableHeightDp = if (tableWidthPx > 0 && aspectRatio > 0)
-                    with(LocalDensity.current) { (tableWidthPx / aspectRatio).toDp() }
+                // Use outer width for height so the bezel padding is included in sizing
+                val tableHeightDp = if (outerTableWidthPx > 0 && aspectRatio > 0)
+                    with(LocalDensity.current) { (outerTableWidthPx / aspectRatio).toDp() } + 4.dp
                 else 0.dp
 
                 // Bezel frame: outer dark ring → inner highlight ring → cardboard surface
@@ -234,17 +236,18 @@ fun GameScreen(
                             if (tableHeightDp > 0.dp) Modifier.height(tableHeightDp)
                             else Modifier.weight(1f)
                         )
+                        .onGloballyPositioned { coords ->
+                            // Measure outer box width for aspect-ratio height calculation
+                            outerTableWidthPx = coords.size.width.toFloat()
+                        }
                         .background(BezelOuter, shape = RoundedCornerShape(10.dp))
-                        .padding(6.dp)
-                        .background(BezelInner, shape = RoundedCornerShape(7.dp))
-                        .padding(4.dp)
-                        .background(CardboardLight, shape = RoundedCornerShape(5.dp))
-                        .clip(RoundedCornerShape(5.dp))
+                        .padding(8.dp)
+                        .background(CardboardLight, shape = RoundedCornerShape(6.dp))
                         .onGloballyPositioned { coords ->
                             tableWidthPx = coords.size.width.toFloat()
                             val rootY = coords.positionInRoot().y
                             viewModel.tableTopY    = rootY
-                            viewModel.tableBottomY = rootY + coords.size.height
+                            viewModel.tableBottomY = rootY + coords.size.height.toFloat()
                         }
                 ) {
                     when {
@@ -435,10 +438,8 @@ fun PeekOverlay(bitmap: android.graphics.Bitmap, onDismiss: () -> Unit) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(BezelOuter, shape = RoundedCornerShape(10.dp))
-                        .padding(6.dp)
-                        .background(BezelInner, shape = RoundedCornerShape(7.dp))
-                        .padding(4.dp)
-                        .clip(RoundedCornerShape(5.dp))
+                        .padding(8.dp)
+                        .clip(RoundedCornerShape(6.dp))
                 ) {
                     androidx.compose.foundation.Image(
                         bitmap = bitmap.asImageBitmap(),

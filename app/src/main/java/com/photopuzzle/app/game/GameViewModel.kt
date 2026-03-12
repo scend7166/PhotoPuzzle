@@ -125,7 +125,7 @@ class GameViewModel @Inject constructor(
                     val (c, r) = PuzzleEngine.gridDimensions(pieceCount)
                     val pw = tableWidthPx / c
                     val ph = tableHeightPx / r
-                    val mg = (maxOf(pw, ph) * 0.45f).toInt()
+                    val mg = (maxOf(pw, ph) * 0.30f).toInt()
                     Loaded(PuzzleEngine.createPieces(scaled, pieceCount), c, r, pw, ph, mg, aspectRatio, tableHeightPx, scaled)
                 }
 
@@ -225,26 +225,37 @@ class GameViewModel @Inject constructor(
                 val slot = slotForDrop(rootX, tableY, state)
 
                 if (slot != null) {
-                    val shape = when (drag.source) {
-                        DragSource.TRAY -> {
-                            val idx = drag.sourceTrayIndex ?: 0
-                            if (idx < mutableTray.size) mutableTray.removeAt(idx).shape else null
-                        }
-                        DragSource.TABLE -> {
-                            val idx = drag.sourceTableIndex ?: return
-                            if (idx < mutableTable.size) mutableTable.removeAt(idx).shape else null
-                        }
-                    } ?: return
-
-                    // Place in slot — if slot occupied, displaced piece returns to tray
-                    val displaced = placeInSlot(shape, slot, mutableTable, state)
-                    if (displaced != null) {
+                    // If the slot is already occupied, return the dragged piece to the tray
+                    val slotOccupied = mutableTable.any { it.slotCol == slot.first && it.slotRow == slot.second }
+                    if (slotOccupied) {
                         val insertAt = trayIndexAt(state, rootX, rootY)
                             ?.coerceIn(0, mutableTray.size) ?: mutableTray.size
-                        mutableTray.add(insertAt, TrayPiece(
-                            shape = displaced.shape,
-                            trayBitmap = makeThumb(displaced.shape, state)
-                        ))
+                        when (drag.source) {
+                            DragSource.TRAY -> {
+                                // piece was never removed from tray yet — nothing to do, it stays
+                            }
+                            DragSource.TABLE -> {
+                                // piece came from the table — put it back in the tray
+                                val idx = drag.sourceTableIndex ?: return
+                                if (idx < mutableTable.size) {
+                                    val shape = mutableTable.removeAt(idx).shape
+                                    mutableTray.add(insertAt, TrayPiece(shape = shape, trayBitmap = makeThumb(shape, state)))
+                                }
+                            }
+                        }
+                    } else {
+                        val shape = when (drag.source) {
+                            DragSource.TRAY -> {
+                                val idx = drag.sourceTrayIndex ?: 0
+                                if (idx < mutableTray.size) mutableTray.removeAt(idx).shape else null
+                            }
+                            DragSource.TABLE -> {
+                                val idx = drag.sourceTableIndex ?: return
+                                if (idx < mutableTable.size) mutableTable.removeAt(idx).shape else null
+                            }
+                        } ?: return
+
+                        placeInSlot(shape, slot, mutableTable, state)
                     }
                 } else {
                     // Dropped outside grid — return table pieces to tray
