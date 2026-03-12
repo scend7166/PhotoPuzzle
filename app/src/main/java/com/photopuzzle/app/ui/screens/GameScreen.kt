@@ -120,7 +120,7 @@ fun GameScreen(
             confirmButton = {
                 TextButton(onClick = {
                     showQuitConfirm = false
-                    onQuit()
+                    viewModel.recordSessionAndQuit(onQuit)
                 }) { Text("Quit", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {

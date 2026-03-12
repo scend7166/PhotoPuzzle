@@ -159,8 +159,25 @@ class GameViewModel @Inject constructor(
 
     /** Reset the puzzle to its initial unsolved state, reshuffling pieces. */
     fun resetGame() {
+        val elapsed = _uiState.value.elapsedSeconds
+        if (elapsed > 0 && !_uiState.value.isSolved) {
+            viewModelScope.launch { statsRepository.recordSession(pieceCount, elapsed) }
+        }
         initialized = false
         initGame(imageUri, pieceCount, storedTableWidthPx, storedTrayPieceSizePx)
+    }
+
+    /** Call when the user quits mid-game so the session time is recorded. */
+    fun recordSessionAndQuit(onQuit: () -> Unit) {
+        val elapsed = _uiState.value.elapsedSeconds
+        if (elapsed > 0 && !_uiState.value.isSolved) {
+            viewModelScope.launch {
+                statsRepository.recordSession(pieceCount, elapsed)
+                onQuit()
+            }
+        } else {
+            onQuit()
+        }
     }
 
     // ── Global drag handlers (called from single root pointerInput) ───────────
@@ -444,7 +461,9 @@ class GameViewModel @Inject constructor(
 
     private fun saveResult() {
         viewModelScope.launch {
-            statsRepository.recordResult(pieceCount, _uiState.value.elapsedSeconds, imageUri)
+            val elapsed = _uiState.value.elapsedSeconds
+            statsRepository.recordResult(pieceCount, elapsed, imageUri)
+            statsRepository.recordSession(pieceCount, elapsed)
         }
     }
 

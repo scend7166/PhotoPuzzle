@@ -61,8 +61,7 @@ object PuzzleEngine {
         }
 
         // Generate one shared connector per horizontal seam (between row N and row N+1).
-        // Keyed by the upper cell (col, row). The upper piece uses sign=+1 (tab down),
-        // the lower piece copies it with sign=-1 (blank up).
+        // sign is randomised per seam — the neighbouring piece just inverts it.
         val horizontalSeamConnectors = HashMap<Pair<Int, Int>, EdgeConnector>()
         for (row in 0 until rows - 1)
             for (col in 0 until cols)
@@ -70,8 +69,7 @@ object PuzzleEngine {
                     horizontalSeamConnectors[Pair(col, row)] = randomConnector(rng)
 
         // Generate one shared connector per vertical seam (between col N and col N+1).
-        // Keyed by the left cell (col, row). The left piece uses sign=+1 (tab right),
-        // the right piece copies it with sign=-1 (blank left).
+        // sign is randomised per seam — the neighbouring piece just inverts it.
         val verticalSeamConnectors = HashMap<Pair<Int, Int>, EdgeConnector>()
         for (row in 0 until rows)
             for (col in 0 until cols - 1)
@@ -85,11 +83,13 @@ object PuzzleEngine {
             for (col in 0 until cols) {
                 if (Pair(col, row) !in occupiedCells) continue
 
-                // Each piece looks up the shared seam connector and flips sign for the blank side
-                val topEdge    = horizontalSeamConnectors[Pair(col, row - 1)]?.copy(sign = -1)
-                val bottomEdge = horizontalSeamConnectors[Pair(col, row)]    ?.copy(sign = +1)
-                val leftEdge   = verticalSeamConnectors  [Pair(col - 1, row)]?.copy(sign = -1)
-                val rightEdge  = verticalSeamConnectors  [Pair(col, row)]    ?.copy(sign = +1)
+                // Each piece looks up the shared seam connector.
+                // The piece that owns the seam (upper/left) keeps the randomised sign;
+                // the neighbour (lower/right) inverts it so tabs always fit blanks.
+                val topEdge    = horizontalSeamConnectors[Pair(col, row - 1)]?.let { it.copy(sign = -it.sign) }
+                val bottomEdge = horizontalSeamConnectors[Pair(col, row)]
+                val leftEdge   = verticalSeamConnectors  [Pair(col - 1, row)]?.let { it.copy(sign = -it.sign) }
+                val rightEdge  = verticalSeamConnectors  [Pair(col, row)]
 
                 val sourceRect = RectF(
                     col * pieceWidth,       row * pieceHeight,
@@ -123,9 +123,9 @@ object PuzzleEngine {
         return pieces
     }
 
-    /** Randomise a connector; sign is always +1 here and flipped per-piece at the call site. */
+    /** Randomise a connector including which side the tab protrudes toward. */
     private fun randomConnector(rng: Random) = EdgeConnector(
-        sign       = +1,
+        sign       = if (rng.nextBoolean()) +1 else -1,
         offset     = rng.nextFloat() * 0.30f + 0.35f,  // tab centre: 35%–65% along edge
         tabHalf    = rng.nextFloat() * 0.08f + 0.20f,  // slot half-width: 20%–28% of edge
         protrusion = rng.nextFloat() * 0.08f + 0.20f,  // tab depth: 20%–28% of perp dimension

@@ -3,6 +3,7 @@ package com.photopuzzle.app.data
 import android.content.Context
 import androidx.room.Room
 import com.photopuzzle.app.data.db.AppDatabase
+import com.photopuzzle.app.data.db.PlaySessionDao
 import com.photopuzzle.app.data.db.PuzzleResultDao
 import dagger.Module
 import dagger.Provides
@@ -24,4 +25,7 @@ object AppModule {
 
     @Provides
     fun providePuzzleResultDao(db: AppDatabase): PuzzleResultDao = db.puzzleResultDao()
+
+    @Provides
+    fun providePlaySessionDao(db: AppDatabase): PlaySessionDao = db.playSessionDao()
 }

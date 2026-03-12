@@ -30,9 +30,30 @@ interface PuzzleResultDao {
     """)
     fun getStatsBySize(): Flow<List<SizeStatsEntity>>
 
+    @Query("SELECT MIN(completionTimeSeconds) FROM puzzle_results WHERE pieceCount = :pieceCount")
+    fun getBestTimeForSize(pieceCount: Int): Flow<Long?>
+
+    @Query("SELECT SUM(completionTimeSeconds) FROM puzzle_results")
+    fun getTotalTimeSeconds(): Flow<Long?>
+
+    @Query("""
+        SELECT pieceCount, MIN(completionTimeSeconds) as bestTimeSeconds
+        FROM puzzle_results
+        GROUP BY pieceCount
+    """)
+    fun getBestTimesBySize(): Flow<List<BestTimeEntity>>
+
+    @Query("SELECT completedAt FROM puzzle_results ORDER BY completedAt DESC")
+    fun getAllCompletionDates(): Flow<List<Long>>
+
     @Query("DELETE FROM puzzle_results")
     suspend fun deleteAll()
 }
+
+data class BestTimeEntity(
+    val pieceCount: Int,
+    val bestTimeSeconds: Long
+)
 
 data class SizeStatsEntity(
     val pieceCount: Int,
