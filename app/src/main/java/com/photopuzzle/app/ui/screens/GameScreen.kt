@@ -277,7 +277,13 @@ fun GameScreen(
                         ) { Text(state.errorMessage!!, color = Color.White) }
 
                         else -> TableCanvas(
-                            tablePieces = state.tablePieces,
+                            // Exclude the piece currently being dragged — the ghost
+                            // renders it, so keeping it in the list causes a duplicate.
+                            tablePieces = state.tablePieces.let { pieces ->
+                                val dragIdx = state.drag?.sourceTableIndex
+                                if (dragIdx != null) pieces.filterIndexed { i, _ -> i != dragIdx }
+                                else pieces
+                            },
                             cols = state.cols,
                             rows = state.rows,
                             pieceW = state.pieceW,
