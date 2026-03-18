@@ -238,29 +238,23 @@ class GameViewModel @Inject constructor(
         when {
             // ── Dropped on the table ──────────────────────────────────────────
             isOnTable(rootY) -> {
-                val tableY = rootY - tableTopY
-                val slot = slotForDrop(rootX, tableY, state)
+                // Use piece centre (not finger tip) to find the target slot.
+                val centrePieceX = drag.fingerPosition.x - drag.bitmapOffset.x + drag.displayW / 2f
+                val centrePieceY = drag.fingerPosition.y - drag.bitmapOffset.y + drag.displayH / 2f
+                val centreTableY = centrePieceY - tableTopY
 
-                if (slot != null) {
-                    // If the slot is already occupied, return the dragged piece to the tray
-                    val slotOccupied = mutableTable.any { it.slotCol == slot.first && it.slotRow == slot.second }
-                    if (slotOccupied) {
-                        val insertAt = trayIndexAt(state, rootX, rootY)
-                            ?.coerceIn(0, mutableTray.size) ?: mutableTray.size
-                        when (drag.source) {
-                            DragSource.TRAY -> {
-                                // piece was never removed from tray yet — nothing to do, it stays
-                            }
-                            DragSource.TABLE -> {
-                                // piece came from the table — put it back in the tray
-                                val idx = drag.sourceTableIndex ?: return
-                                if (idx < mutableTable.size) {
-                                    val shape = mutableTable.removeAt(idx).shape
-                                    mutableTray.add(insertAt, TrayPiece(shape = shape, trayBitmap = makeThumb(shape, state)))
-                                }
-                            }
-                        }
-                    } else {
+                // Find the nearest slot to the piece centre.
+                val nearestSlot = nearestSlot(centrePieceX, centreTableY, state)
+
+                // Check if that slot is already occupied (excluding the piece being dragged).
+                val occupiedByOther = nearestSlot != null && mutableTable.any { piece ->
+                    piece.slotCol == nearestSlot.first && piece.slotRow == nearestSlot.second &&
+                        (drag.source != DragSource.TABLE || mutableTable.indexOf(piece) != drag.sourceTableIndex)
+                }
+
+                when {
+                    nearestSlot != null && !occupiedByOther -> {
+                        // Place in the nearest empty slot
                         val shape = when (drag.source) {
                             DragSource.TRAY -> {
                                 val idx = drag.sourceTrayIndex ?: 0
@@ -271,17 +265,17 @@ class GameViewModel @Inject constructor(
                                 if (idx < mutableTable.size) mutableTable.removeAt(idx).shape else null
                             }
                         } ?: return
-
-                        placeInSlot(shape, slot, mutableTable, state)
+                        placeInSlot(shape, nearestSlot, mutableTable, state)
                     }
-                } else {
-                    // Dropped outside grid — return table pieces to tray
-                    if (drag.source == DragSource.TABLE) {
-                        val idx = drag.sourceTableIndex ?: return
-                        if (idx < mutableTable.size) {
-                            val shape = mutableTable.removeAt(idx).shape
-                            mutableTray.add(TrayPiece(shape = shape, trayBitmap = makeThumb(shape, state)))
-                        }
+
+                    drag.source == DragSource.TRAY -> {
+                        // Nearest slot is occupied — return tray piece to its original tray index
+                        // (it was never removed, so it's still there — no-op)
+                    }
+
+                    drag.source == DragSource.TABLE -> {
+                        // Nearest slot is occupied — piece stays in its original board slot (no-op,
+                        // it is still in mutableTable at sourceTableIndex)
                     }
                 }
             }
@@ -289,6 +283,7 @@ class GameViewModel @Inject constructor(
             // ── Dropped on the tray ───────────────────────────────────────────
             isOnTray(rootY) -> {
                 if (drag.source == DragSource.TABLE) {
+                    // Move board piece back to the tray
                     val idx = drag.sourceTableIndex ?: return
                     if (idx < mutableTable.size) {
                         val shape = mutableTable.removeAt(idx).shape
@@ -392,6 +387,21 @@ class GameViewModel @Inject constructor(
         val col = (dropX / state.pieceW).toInt()
         val row = (dropY / state.pieceH).toInt()
         if (col < 0 || col >= state.cols || row < 0 || row >= state.rows) return null
+        return Pair(col, row)
+    }
+
+    /**
+     * Returns the grid slot whose centre is nearest to (centreX, centreY),
+     * where coordinates are relative to the table top-left.
+     * Returns null if the piece centre is entirely outside the board.
+     */
+    private fun nearestSlot(centreX: Float, centreY: Float, state: GameUiState): Pair<Int, Int>? {
+        if (state.cols == 0 || state.rows == 0) return null
+        val col = (centreX / state.pieceW).toInt().coerceIn(0, state.cols - 1)
+        val row = (centreY / state.pieceH).toInt().coerceIn(0, state.rows - 1)
+        // Also check that the centre is at least roughly over the board
+        if (centreX < 0 || centreX > state.cols * state.pieceW ||
+            centreY < 0 || centreY > state.rows * state.pieceH) return null
         return Pair(col, row)
     }
 
