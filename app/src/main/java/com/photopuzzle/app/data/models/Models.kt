@@ -28,6 +28,8 @@ data class StatsOverview(
     val averageTimePerPiece: Double,
     val totalTimeSeconds: Long,
     val currentStreakDays: Int,
+    val longestStreakDays: Int,
+    val overallCompletionRate: Float,   // 0..1
     val statsBySize: List<SizeStats>
 )
 
@@ -36,7 +38,9 @@ data class SizeStats(
     val timesSolved: Int,
     val averageCompletionSeconds: Double,
     val bestTimeSeconds: Long?,
-    val totalPlayTimeSeconds: Long = 0L
+    val totalPlayTimeSeconds: Long = 0L,
+    val completionRate: Float = 0f,     // solves / sessions started (0..1)
+    val isRecentPB: Boolean = false     // most recent solve was a personal best
 )
 
 val PUZZLE_SIZES = listOf(9, 25, 50, 100, 150, 200, 250)

@@ -46,6 +46,17 @@ interface PuzzleResultDao {
     @Query("SELECT completedAt FROM puzzle_results ORDER BY completedAt DESC")
     fun getAllCompletionDates(): Flow<List<Long>>
 
+    @Query("""
+        SELECT completionTimeSeconds FROM puzzle_results
+        WHERE pieceCount = :pieceCount
+        ORDER BY completionTimeSeconds ASC
+        LIMIT 1 OFFSET 1
+    """)
+    suspend fun getSecondBestTimeForSize(pieceCount: Int): Long?
+
+    @Query("SELECT completionTimeSeconds FROM puzzle_results WHERE pieceCount = :pieceCount ORDER BY completedAt DESC LIMIT 1")
+    suspend fun getLatestCompletionTimeForSize(pieceCount: Int): Long?
+
     @Query("DELETE FROM puzzle_results")
     suspend fun deleteAll()
 }
