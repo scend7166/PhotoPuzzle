@@ -323,24 +323,20 @@ object PuzzleEngine {
     ) {
         if (conn == null) { path.lineTo(endX, edgeY); return }
 
-        val forward = endX >= startX   // true = left→right, false = right→left
-        val (seg1, seg2, seg3) = connectorSegments(conn)
+        // For reverse edges (right→left), flip the connector offset so the tab
+        // appears at the correct absolute position on the piece, not mirrored.
+        val forward = endX >= startX
+        val effectiveConn = if (forward) conn else conn.copy(offset = 1f - conn.offset)
+        val (seg1, seg2, seg3) = connectorSegments(effectiveConn)
 
-        // Map normalised (u, v) → actual canvas (x, y) for a horizontal edge.
-        // When travelling right→left (forward=false) flip u so the connector
-        // centre stays at the correct position rather than being mirrored.
-        fun mapH(u: Float, v: Float): Pair<Float, Float> {
-            val uM = if (forward) u else 1f - u
-            return Pair(startX + uM * (endX - startX), edgeY + v * pieceHeight * perpSign)
-        }
+        // u=0 always maps to startX, u=1 to endX — (endX-startX) is negative for reverse,
+        // so direction is handled automatically without flipping u.
+        fun mapH(u: Float, v: Float): Pair<Float, Float> =
+            Pair(startX + u * (endX - startX), edgeY + v * pieceHeight * perpSign)
 
-        for (seg in listOf(seg1, seg2, seg3)) {
-            val pl = bezierPolyline(seg)
-            pl.drop(1).forEach { (u, v) ->   // drop(1) avoids duplicate join points
-                val (x, y) = mapH(u, v)
-                path.lineTo(x, y)
-            }
-        }
+        bezierPolyline(seg1).forEach         { (u,v) -> val (x,y) = mapH(u,v); path.lineTo(x,y) }
+        bezierPolyline(seg2).drop(1).forEach { (u,v) -> val (x,y) = mapH(u,v); path.lineTo(x,y) }
+        bezierPolyline(seg3).drop(1).forEach { (u,v) -> val (x,y) = mapH(u,v); path.lineTo(x,y) }
     }
 
     /**
@@ -358,22 +354,15 @@ object PuzzleEngine {
     ) {
         if (conn == null) { path.lineTo(edgeX, endY); return }
 
-        val forward = endY >= startY   // true = top→bottom, false = bottom→top
-        val (seg1, seg2, seg3) = connectorSegments(conn)
+        val forward = endY >= startY
+        val effectiveConn = if (forward) conn else conn.copy(offset = 1f - conn.offset)
+        val (seg1, seg2, seg3) = connectorSegments(effectiveConn)
 
-        // Map normalised (u, v) → actual canvas (x, y) for a vertical edge.
-        // u maps along Y, v maps along X.
-        fun mapV(u: Float, v: Float): Pair<Float, Float> {
-            val uM = if (forward) u else 1f - u
-            return Pair(edgeX + v * pieceWidth * perpSign, startY + uM * (endY - startY))
-        }
+        fun mapV(u: Float, v: Float): Pair<Float, Float> =
+            Pair(edgeX + v * pieceWidth * perpSign, startY + u * (endY - startY))
 
-        for (seg in listOf(seg1, seg2, seg3)) {
-            val pl = bezierPolyline(seg)
-            pl.drop(1).forEach { (u, v) ->
-                val (x, y) = mapV(u, v)
-                path.lineTo(x, y)
-            }
-        }
+        bezierPolyline(seg1).forEach         { (u,v) -> val (x,y) = mapV(u,v); path.lineTo(x,y) }
+        bezierPolyline(seg2).drop(1).forEach { (u,v) -> val (x,y) = mapV(u,v); path.lineTo(x,y) }
+        bezierPolyline(seg3).drop(1).forEach { (u, v) -> val (x,y) = mapV(u,v); path.lineTo(x,y) }
     }
 }
