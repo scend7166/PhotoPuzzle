@@ -31,6 +31,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.activity.compose.BackHandler
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -67,6 +69,9 @@ fun GameScreen(
     viewModel: GameViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
+
+    // Intercept back gestures and button — users should use Quit to exit intentionally
+    BackHandler(enabled = true) { /* consume and do nothing */ }
 
     var tableWidthPx      by remember { mutableFloatStateOf(0f) }
     var outerTableWidthPx by remember { mutableFloatStateOf(0f) }
@@ -138,11 +143,17 @@ fun GameScreen(
         )
     }
 
-    if (state.isSolved) {
+    // Track whether the solved dialog has been dismissed (so we show the "view" state)
+    var solvedDialogDismissed by remember { mutableStateOf(false) }
+
+    if (state.isSolved && !solvedDialogDismissed) {
         PuzzleSolvedDialog(
             elapsedSeconds = state.elapsedSeconds,
             pieceCount = pieceCount,
-            onDismiss = onGameComplete
+            onDismiss = {
+                solvedDialogDismissed = true
+                viewModel.pauseGame()   // freeze the timer on the final time
+            }
         )
     }
 
@@ -173,17 +184,21 @@ fun GameScreen(
                         )
                     }
                 },
-                // Right: reset + close
+                // Right: game controls — invisible once solved to keep title centred
                 actions = {
-                    IconButton(onClick = { showResetConfirm = true }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Reset puzzle")
-                    }
-                    IconButton(onClick = { viewModel.pauseGame() }) {
-                        Icon(Icons.Default.Pause, contentDescription = "Pause")
-                    }
-                    IconButton(onClick = { showQuitConfirm = true }) {
-                        Icon(Icons.Default.Close, contentDescription = "Quit")
-                    }
+                    val buttonAlpha = if (state.isSolved) 0f else 1f
+                    IconButton(
+                        onClick = { if (!state.isSolved) showResetConfirm = true },
+                        modifier = Modifier.alpha(buttonAlpha)
+                    ) { Icon(Icons.Default.Refresh, contentDescription = "Reset puzzle") }
+                    IconButton(
+                        onClick = { if (!state.isSolved) viewModel.pauseGame() },
+                        modifier = Modifier.alpha(buttonAlpha)
+                    ) { Icon(Icons.Default.Pause, contentDescription = "Pause") }
+                    IconButton(
+                        onClick = { if (!state.isSolved) showQuitConfirm = true },
+                        modifier = Modifier.alpha(buttonAlpha)
+                    ) { Icon(Icons.Default.Close, contentDescription = "Quit") }
                 }
             )
         }
@@ -274,26 +289,44 @@ fun GameScreen(
 
                 HorizontalDivider(color = Color(0xFF3E2010), thickness = 3.dp)
 
-                // ── Piece Tray ─────────────────────────────────────────────────
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .background(TrayBg)
-                        .onGloballyPositioned { coords ->
-                            val rootY = coords.positionInRoot().y
-                            viewModel.trayTopY = rootY
-                            if (trayPiecePx == 0f) {
-                                trayPiecePx = coords.size.width.toFloat() / 5f
-                            }
+                // ── Piece Tray / Completed state ──────────────────────────────
+                if (state.isSolved && solvedDialogDismissed) {
+                    // Puzzle complete: show a "Do Another" button instead of the tray
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .background(TrayBg),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Button(
+                            onClick = onGameComplete,
+                            modifier = Modifier.padding(16.dp)
+                        ) {
+                            Text("Do Another", fontSize = 18.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
                         }
-                ) {
-                    when {
-                        state.isLoading -> Unit
-                        state.trayPieces.isEmpty() -> Box(
-                            Modifier.fillMaxSize(), contentAlignment = Alignment.Center
-                        ) { Text("All pieces on the board!", color = Color.White.copy(alpha = 0.5f)) }
-                        else -> TrayGrid(pieces = state.trayPieces)
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .background(TrayBg)
+                            .onGloballyPositioned { coords ->
+                                val rootY = coords.positionInRoot().y
+                                viewModel.trayTopY = rootY
+                                if (trayPiecePx == 0f) {
+                                    trayPiecePx = coords.size.width.toFloat() / 5f
+                                }
+                            }
+                    ) {
+                        when {
+                            state.isLoading -> Unit
+                            state.trayPieces.isEmpty() -> Box(
+                                Modifier.fillMaxSize(), contentAlignment = Alignment.Center
+                            ) { Text("All pieces on the board!", color = Color.White.copy(alpha = 0.5f)) }
+                            else -> TrayGrid(pieces = state.trayPieces)
+                        }
                     }
                 }
             }
