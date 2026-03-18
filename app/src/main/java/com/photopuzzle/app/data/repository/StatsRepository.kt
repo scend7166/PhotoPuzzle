@@ -129,6 +129,7 @@ class StatsRepository @Inject constructor(
             s
         }
 
+
         // Longest streak — scan all days
         var longest = 1
         var run = 1
